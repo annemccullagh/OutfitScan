@@ -4,8 +4,6 @@
 
 import SwiftUI
 import PhotosUI
-import Vision
-import UIKit
 
 struct ContentView: View {
     @State private var selectedItem: PhotosPickerItem? = nil
@@ -13,13 +11,16 @@ struct ContentView: View {
     @State private var showScanAlert = false
     @State private var scanMessage: String = ""
 
+    private let rapidAPIKey = "9c07cd1562msh48d4542e5b4ee5fp17e7f6jsn9d3c9c8a5678"
+    private let rapidAPIHost = "fashion4.p.rapidapi.com"
+    private let rapidAPIURL = "https://fashion4.p.rapidapi.com/v2/results"
+
     var body: some View {
         VStack(spacing: 20) {
             Text("OutfitScan")
                 .font(.largeTitle)
                 .bold()
 
-            //preview of app
             Group {
                 if let selectedImageData,
                    let uiImage = UIImage(data: selectedImageData) {
@@ -45,7 +46,6 @@ struct ContentView: View {
             }
             .padding(.horizontal)
 
-            //let user pick a photo
             PhotosPicker(selection: $selectedItem, matching: .images) {
                 Label("Choose Photo", systemImage: "plus.circle.fill")
                     .font(.headline)
@@ -65,11 +65,9 @@ struct ContentView: View {
                 }
             }
 
-            //submit button
             Button {
-                guard let imageData = selectedImageData,
-                      let image = UIImage(data: imageData) else { return }
-                scanImage(image)
+                guard let imageData = selectedImageData else { return }
+                sendToAPI(imageData)
             } label: {
                 Label("Submit Photo", systemImage: "paperplane.fill")
                     .font(.headline)
@@ -85,7 +83,6 @@ struct ContentView: View {
             Spacer()
         }
         .padding(.top)
-        //attach the sheet to the whole screen (VStack), not inside it
         .sheet(isPresented: $showScanAlert) {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Photo Attributes")
@@ -112,45 +109,65 @@ struct ContentView: View {
         }
     }
 
-    //API
-    private func scanImage(_ image: UIImage) {
-        guard let ciImage = CIImage(image: image) else {
-            print("Could not convert UIImage to CIImage.")
-            return
-        }
+    // MARK: - Multipart/form-data POST
+    private func sendToAPI(_ imageData: Data) {
+        guard let url = URL(string: rapidAPIURL) else { return }
 
-        let request = VNClassifyImageRequest { request, error in
+        let boundary = "Boundary-\(UUID().uuidString)"
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(rapidAPIKey, forHTTPHeaderField: "x-rapidapi-key")
+        request.setValue(rapidAPIHost, forHTTPHeaderField: "x-rapidapi-host")
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        // Build multipart body
+        var body = Data()
+        let filename = "image.jpg"
+        let mimeType = "image/jpeg"
+
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"image\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n".data(using: .utf8)!)
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+
+        request.httpBody = body
+
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                print("Image classification error: \(error.localizedDescription)")
+                DispatchQueue.main.async {
+                    self.scanMessage = "Error: \(error.localizedDescription)"
+                    self.showScanAlert = true
+                }
                 return
             }
 
-            guard let observations = request.results as? [VNClassificationObservation] else {
-                print("Request returned no observations.")
+            guard let data = data,
+                  let resultString = String(data: data, encoding: .utf8) else {
+                DispatchQueue.main.async {
+                    self.scanMessage = "No data received"
+                    self.showScanAlert = true
+                }
                 return
-            }
-
-            let top = observations.prefix(5)
-            let lines = top.map { obs in
-                "\(obs.identifier) — \(Int(obs.confidence * 100))%"
             }
 
             DispatchQueue.main.async {
-                self.scanMessage = lines.joined(separator: "\n")
+                self.scanMessage = resultString
                 self.showScanAlert = true
             }
         }
 
-        let handler = VNImageRequestHandler(ciImage: ciImage, options: [:])
-
-        do {
-            try handler.perform([request])
-        } catch {
-            print("Failed to perform Vision request: \(error.localizedDescription)")
-        }
+        task.resume()
     }
+}
 
-    private func processImage(_ image: UIImage) {
-        scanImage(image)
+// MARK: - Data append helper
+extension Data {
+    mutating func append(_ string: String) {
+        if let data = string.data(using: .utf8) {
+            append(data)
+        }
     }
 }
