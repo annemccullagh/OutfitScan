@@ -245,7 +245,6 @@ struct ContentView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
-    // MARK: - Main Analysis Pipeline
     @MainActor
     private func analyzeImage(_ imageData: Data) async {
         isLoading = true
@@ -271,7 +270,6 @@ struct ContentView: View {
         isLoading = false
     }
 
-    // MARK: - API Calls
     private func sendToFashionAPI(_ imageData: Data) async throws -> [String: Any] {
         guard rapidAPIKey != "YOUR_RAPIDAPI_KEY" else {
             throw ScanError.missingFashionKey
@@ -333,7 +331,6 @@ struct ContentView: View {
         return try decodeJSONObject(from: data)
     }
 
-    // MARK: - Parsing
     private func parseFashionItems(from json: [String: Any]) -> [DetectedItem] {
         var items: [DetectedItem] = []
 
@@ -463,7 +460,6 @@ struct ContentView: View {
         )
     }
 
-    // MARK: - Helpers
     private func validateHTTPResponse(_ response: URLResponse, data: Data) throws {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ScanError.invalidResponse
@@ -495,7 +491,6 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Models
 struct DetectedItem: Identifiable, Hashable {
     let id = UUID()
     let label: String
@@ -541,7 +536,6 @@ enum ScanError: LocalizedError {
     }
 }
 
-// MARK: - Data Append Helper
 extension Data {
     mutating func append(_ string: String) {
         if let data = string.data(using: .utf8) {
