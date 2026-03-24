@@ -6,6 +6,7 @@ import SwiftUI
 import PhotosUI
 import UIKit
 
+
 struct ContentView: View {
     @State private var selectedItem: PhotosPickerItem?
     @State private var selectedImageData: Data?
@@ -14,14 +15,12 @@ struct ContentView: View {
     @State private var result: ScanResult?
     @State private var errorMessage: String?
 
-   
     private let rapidAPIKey = "9c07cd1562msh48d4542e5b4ee5fp17e7f6jsn9d3c9c8a5678"
-    private let rapidAPIHost = "fashion4.p.rapidapi.com"
-    private let rapidAPIURL = "https://fashion4.p.rapidapi.com/v2/results"
-
-    private let ximilarToken = "65b65e217db9b7cd29e86fe6da271fc840e6f582"
-    private let ximilarProductColorsURL = "https://api.ximilar.com/dom_colors/product/v2/dominantcolor"
-
+        private let rapidAPIHost = "fashion4.p.rapidapi.com"
+        private let rapidAPIURL = "https://fashion4.p.rapidapi.com/v2/results"
+        private let ximilarToken = "65b65e217db9b7cd29e86fe6da271fc840e6f582"
+        private let ximilarProductColorsURL = "https://api.ximilar.com/dom_colors/product/v2/dominantcolor"
+    
     var body: some View {
         VStack(spacing: 20) {
             Text("OutfitScan")
@@ -30,6 +29,7 @@ struct ContentView: View {
 
             imagePreview
                 .padding(.horizontal)
+
 
             PhotosPicker(selection: $selectedItem, matching: .images) {
                 Label("Choose Photo", systemImage: "plus.circle.fill")
@@ -57,6 +57,7 @@ struct ContentView: View {
                 Task {
                     await analyzeImage(imageData)
                 }
+
             } label: {
                 Label(isLoading ? "Analyzing..." : "Analyze Outfit", systemImage: isLoading ? "hourglass" : "sparkles")
                     .font(.headline)
@@ -535,6 +536,7 @@ enum ScanError: LocalizedError {
         }
     }
 }
+
 
 extension Data {
     mutating func append(_ string: String) {
