@@ -6,7 +6,6 @@ import SwiftUI
 import PhotosUI
 import UIKit
 
-
 struct ContentView: View {
     @State private var selectedItem: PhotosPickerItem?
     @State private var selectedImageData: Data?
@@ -14,13 +13,18 @@ struct ContentView: View {
     @State private var showResultsSheet = false
     @State private var result: ScanResult?
     @State private var errorMessage: String?
+    @State private var outfitResults: [OutfitSearchResult] = []
 
-    private let rapidAPIKey = "9c07cd1562msh48d4542e5b4ee5fp17e7f6jsn9d3c9c8a5678"
-        private let rapidAPIHost = "fashion4.p.rapidapi.com"
-        private let rapidAPIURL = "https://fashion4.p.rapidapi.com/v2/results"
-        private let ximilarToken = "65b65e217db9b7cd29e86fe6da271fc840e6f582"
-        private let ximilarProductColorsURL = "https://api.ximilar.com/dom_colors/product/v2/dominantcolor"
-    
+    private let rapidAPIKey = "600a16577dmshb9c34e78981189ap1cea92jsndb6e19553497"
+    private let rapidAPIHost = "fashion4.p.rapidapi.com"
+    private let rapidAPIURL = "https://fashion4.p.rapidapi.com/v2/results"
+
+    private let ximilarToken = "c087e60960a3fcb0ec0f7e2da4dc59fd340e2557"
+    private let ximilarProductColorsURL = "https://api.ximilar.com/dom_colors/product/v2/dominantcolor"
+
+    private let searchAPIKey = "EP3aGav88AF4V2fA3FUgk9N8"
+    private let searchAPIURL = "https://www.searchapi.io/api/v1/search"
+
     var body: some View {
         VStack(spacing: 20) {
             Text("OutfitScan")
@@ -29,7 +33,6 @@ struct ContentView: View {
 
             imagePreview
                 .padding(.horizontal)
-
 
             PhotosPicker(selection: $selectedItem, matching: .images) {
                 Label("Choose Photo", systemImage: "plus.circle.fill")
@@ -47,6 +50,7 @@ struct ContentView: View {
                     if let data = try? await newItem.loadTransferable(type: Data.self) {
                         selectedImageData = data
                         result = nil
+                        outfitResults = []
                         errorMessage = nil
                     }
                 }
@@ -201,6 +205,34 @@ struct ContentView: View {
                             }
                         }
 
+                        sectionCard(title: "Outfit Inspiration Results") {
+                            if outfitResults.isEmpty {
+                                Text("No outfit search results found.")
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                ForEach(outfitResults) { outfit in
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Text(outfit.title)
+                                            .font(.headline)
+
+                                        if let snippet = outfit.snippet, !snippet.isEmpty {
+                                            Text(snippet)
+                                                .foregroundStyle(.secondary)
+                                        }
+
+                                        if let url = URL(string: outfit.link) {
+                                            Link("Open Result", destination: url)
+                                                .font(.subheadline)
+                                        }
+                                    }
+
+                                    if outfit.id != outfitResults.last?.id {
+                                        Divider()
+                                    }
+                                }
+                            }
+                        }
+
                         if !result.notes.isEmpty {
                             sectionCard(title: "Notes") {
                                 ForEach(result.notes, id: \.self) { note in
@@ -250,6 +282,7 @@ struct ContentView: View {
     private func analyzeImage(_ imageData: Data) async {
         isLoading = true
         errorMessage = nil
+        outfitResults = []
 
         do {
             async let fashionResponse = sendToFashionAPI(imageData)
@@ -259,9 +292,18 @@ struct ContentView: View {
 
             let parsedItems = parseFashionItems(from: fashionJSON)
             let parsedColors = parseDominantColors(from: colorsJSON)
-            let combined = buildScanResult(items: parsedItems, colors: parsedColors, fashionJSON: fashionJSON, colorsJSON: colorsJSON)
+            let combined = buildScanResult(
+                items: parsedItems,
+                colors: parsedColors,
+                fashionJSON: fashionJSON,
+                colorsJSON: colorsJSON
+            )
+
+            let searchQuery = buildOutfitSearchQuery(items: parsedItems, colors: parsedColors)
+            let searchedOutfits = try await searchOutfits(query: searchQuery)
 
             result = combined
+            outfitResults = searchedOutfits
             showResultsSheet = true
         } catch {
             errorMessage = error.localizedDescription
@@ -307,7 +349,6 @@ struct ContentView: View {
 
     private func sendToXimilarColorsAPI(_ imageData: Data) async throws -> [String: Any] {
         guard ximilarToken != "YOUR_XIMILAR_TOKEN" else {
-            // Return empty payload so the rest of the app still works even if the color API is not configured yet.
             return [:]
         }
 
@@ -330,6 +371,97 @@ struct ContentView: View {
         let (data, response) = try await URLSession.shared.data(for: request)
         try validateHTTPResponse(response, data: data)
         return try decodeJSONObject(from: data)
+    }
+
+    private func searchOutfits(query: String) async throws -> [OutfitSearchResult] {
+        guard searchAPIKey != "YOUR_SEARCHAPI_KEY" else {
+            return []
+        }
+
+        guard var components = URLComponents(string: searchAPIURL) else {
+            throw ScanError.invalidURL
+        }
+
+        components.queryItems = [
+            URLQueryItem(name: "engine", value: "google_images"),
+            URLQueryItem(name: "q", value: query),
+            URLQueryItem(name: "api_key", value: searchAPIKey)
+        ]
+
+        guard let url = components.url else {
+            throw ScanError.invalidURL
+        }
+
+        let (data, response) = try await URLSession.shared.data(from: url)
+        try validateHTTPResponse(response, data: data)
+
+        let object = try JSONSerialization.jsonObject(with: data)
+        guard let json = object as? [String: Any] else {
+            throw ScanError.invalidJSON
+        }
+
+        return parseOutfitResults(from: json)
+    }
+
+    private func buildOutfitSearchQuery(items: [DetectedItem], colors: [DetectedColor]) -> String {
+        let itemLabels = items.prefix(4).map { $0.label.lowercased() }
+        let colorLabels = colors.prefix(2).map { $0.name.lowercased() }
+
+        let queryParts = colorLabels + itemLabels
+        let joined = queryParts.joined(separator: " ")
+
+        if joined.isEmpty {
+            return "fashion outfit inspiration"
+        }
+
+        return "\(joined) outfit inspiration"
+    }
+
+    private func parseOutfitResults(from json: [String: Any]) -> [OutfitSearchResult] {
+        var results: [OutfitSearchResult] = []
+
+        if let imageResults = json["images_results"] as? [[String: Any]] {
+            for item in imageResults.prefix(10) {
+                let title = item["title"] as? String ?? "Untitled"
+                let link = item["link"] as? String ?? ""
+                let snippet = item["source"] as? String
+                let thumbnail = item["thumbnail"] as? String
+
+                if !link.isEmpty {
+                    results.append(
+                        OutfitSearchResult(
+                            title: title,
+                            link: link,
+                            snippet: snippet,
+                            thumbnail: thumbnail
+                        )
+                    )
+                }
+            }
+            return results
+        }
+
+        if let organicResults = json["organic_results"] as? [[String: Any]] {
+            for item in organicResults.prefix(10) {
+                let title = item["title"] as? String ?? "Untitled"
+                let link = item["link"] as? String ?? ""
+                let snippet = item["snippet"] as? String
+                let thumbnail = item["thumbnail"] as? String
+
+                if !link.isEmpty {
+                    results.append(
+                        OutfitSearchResult(
+                            title: title,
+                            link: link,
+                            snippet: snippet,
+                            thumbnail: thumbnail
+                        )
+                    )
+                }
+            }
+        }
+
+        return results
     }
 
     private func parseFashionItems(from json: [String: Any]) -> [DetectedItem] {
@@ -358,7 +490,6 @@ struct ContentView: View {
             }
         }
 
-        // Fallback parsing for flatter response shapes.
         if items.isEmpty,
            let objects = json["objects"] as? [[String: Any]] {
             for object in objects {
@@ -440,6 +571,9 @@ struct ContentView: View {
         if items.isEmpty {
             notes.append("The fashion API did not return a confidently parsed clothing label for this image.")
         }
+        if searchAPIKey == "YOUR_SEARCHAPI_KEY" {
+            notes.append("SearchAPI is not active yet. Add your SearchAPI key to enable outfit inspiration results.")
+        }
 
         let mergedRaw: [String: Any] = [
             "fashion_response": fashionJSON,
@@ -505,6 +639,14 @@ struct DetectedColor: Identifiable, Hashable {
     let hex: String?
 }
 
+struct OutfitSearchResult: Identifiable, Hashable {
+    let id = UUID()
+    let title: String
+    let link: String
+    let snippet: String?
+    let thumbnail: String?
+}
+
 struct ScanResult {
     let items: [DetectedItem]
     let colors: [DetectedColor]
@@ -536,7 +678,6 @@ enum ScanError: LocalizedError {
         }
     }
 }
-
 
 extension Data {
     mutating func append(_ string: String) {
