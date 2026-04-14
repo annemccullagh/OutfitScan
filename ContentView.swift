@@ -63,7 +63,7 @@ struct ContentView: View {
                 }
 
             } label: {
-                Label(isLoading ? "Analyzing..." : "Analyze Outfit", systemImage: isLoading ? "hourglass" : "sparkles")
+                Label(isLoading ? "Searching..." : "Find Outfit", systemImage: isLoading ? "hourglass" : "sparkles")
                     .font(.headline)
                     .padding()
                     .frame(maxWidth: .infinity)
@@ -212,6 +212,20 @@ struct ContentView: View {
                             } else {
                                 ForEach(outfitResults) { outfit in
                                     VStack(alignment: .leading, spacing: 6) {
+
+                                        if let thumbnail = outfit.thumbnail,
+                                           let url = URL(string: thumbnail) {
+                                            AsyncImage(url: url) { image in
+                                                image
+                                                    .resizable()
+                                                    .scaledToFill()
+                                            } placeholder: {
+                                                ProgressView()
+                                            }
+                                            .frame(height: 150)
+                                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                                        }
+
                                         Text(outfit.title)
                                             .font(.headline)
 
@@ -299,7 +313,7 @@ struct ContentView: View {
                 colorsJSON: colorsJSON
             )
 
-            let searchQuery = buildOutfitSearchQuery(items: parsedItems, colors: parsedColors)
+            let searchQuery = "grey top outfit street style pinterest"
             let searchedOutfits = try await searchOutfits(query: searchQuery)
 
             result = combined
@@ -314,7 +328,7 @@ struct ContentView: View {
     }
 
     private func sendToFashionAPI(_ imageData: Data) async throws -> [String: Any] {
-        guard rapidAPIKey != "YOUR_RAPIDAPI_KEY" else {
+        guard !rapidAPIKey.isEmpty else {
             throw ScanError.missingFashionKey
         }
 
@@ -374,8 +388,8 @@ struct ContentView: View {
     }
 
     private func searchOutfits(query: String) async throws -> [OutfitSearchResult] {
-        guard searchAPIKey != "YOUR_SEARCHAPI_KEY" else {
-            return []
+        guard !searchAPIKey.isEmpty else {
+            throw ScanError.serverError("Search API key missing")
         }
 
         guard var components = URLComponents(string: searchAPIURL) else {
@@ -385,20 +399,29 @@ struct ContentView: View {
         components.queryItems = [
             URLQueryItem(name: "engine", value: "google_images"),
             URLQueryItem(name: "q", value: query),
-            URLQueryItem(name: "api_key", value: searchAPIKey)
+            URLQueryItem(name: "num", value: "10")
+            // Optional alternative to header auth:
+            // URLQueryItem(name: "api_key", value: searchAPIKey)
         ]
 
         guard let url = components.url else {
             throw ScanError.invalidURL
         }
 
-        let (data, response) = try await URLSession.shared.data(from: url)
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(searchAPIKey)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
         try validateHTTPResponse(response, data: data)
 
         let object = try JSONSerialization.jsonObject(with: data)
         guard let json = object as? [String: Any] else {
             throw ScanError.invalidJSON
         }
+
+        print("SEARCH JSON:", json)
 
         return parseOutfitResults(from: json)
     }
@@ -414,18 +437,27 @@ struct ContentView: View {
             return "fashion outfit inspiration"
         }
 
-        return "\(joined) outfit inspiration"
+        return "\(joined) outfit street style fashion pinterest"
     }
 
     private func parseOutfitResults(from json: [String: Any]) -> [OutfitSearchResult] {
         var results: [OutfitSearchResult] = []
 
-        if let imageResults = json["images_results"] as? [[String: Any]] {
+        if let imageResults = json["images"] as? [[String: Any]] {
             for item in imageResults.prefix(10) {
                 let title = item["title"] as? String ?? "Untitled"
-                let link = item["link"] as? String ?? ""
-                let snippet = item["source"] as? String
+
+                let source = item["source"] as? [String: Any]
+                let original = item["original"] as? [String: Any]
+
+                let link = (source?["link"] as? String)
+                    ?? (original?["link"] as? String)
+                    ?? ""
+
+                let snippet = source?["name"] as? String
+
                 let thumbnail = item["thumbnail"] as? String
+                    ?? (original?["link"] as? String)
 
                 if !link.isEmpty {
                     results.append(
@@ -438,7 +470,6 @@ struct ContentView: View {
                     )
                 }
             }
-            return results
         }
 
         if let organicResults = json["organic_results"] as? [[String: Any]] {
@@ -566,13 +597,14 @@ struct ContentView: View {
 
         var notes: [String] = []
         if ximilarToken == "YOUR_XIMILAR_TOKEN" {
-            notes.append("Ximilar color detection is not active yet. Add your Ximilar token to enable dominant color results.")
+            notes.append("Ximilar color detection is not active yet.")
+            notes.append("Ximilar color detection is not active yet.")
         }
         if items.isEmpty {
-            notes.append("The fashion API did not return a confidently parsed clothing label for this image.")
+            notes.append("The fashion API did not return clothing label.")
         }
         if searchAPIKey == "YOUR_SEARCHAPI_KEY" {
-            notes.append("SearchAPI is not active yet. Add your SearchAPI key to enable outfit inspiration results.")
+            notes.append("SearchAPI is not active yet")
         }
 
         let mergedRaw: [String: Any] = [
