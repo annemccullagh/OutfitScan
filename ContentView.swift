@@ -119,33 +119,34 @@ struct ContentView: View {
 
     @ViewBuilder
     private func summaryCard(_ result: ScanResult) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Quick Summary")
-                .font(.headline)
+        VStack(spacing: 8) {
 
             Text(result.displayTitle)
-                .font(.title3)
+                .font(.title2)
                 .bold()
 
-            if !result.items.isEmpty {
-                Text("Detected Items: \(result.items.map(\.label).joined(separator: ", "))")
-                    .foregroundStyle(.secondary)
-            }
-
             if !result.colorSummary.isEmpty {
-                Text("Colors: \(result.colorSummary)")
+                Text(result.colorSummary)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
-            Button("View Full Results") {
+            Button {
                 showResultsSheet = true
+            } label: {
+                Text("View Outfits")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.black)
+                    .foregroundColor(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
             }
-            .font(.headline)
         }
         .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .frame(maxWidth: .infinity)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 
     private var resultsSheet: some View {
@@ -159,109 +160,55 @@ struct ContentView: View {
                                 .bold()
                         }
 
-                        sectionCard(title: "Detected Clothing Attributes") {
-                            if result.items.isEmpty {
-                                Text("No clothing items were confidently extracted.")
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                ForEach(result.items) { item in
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(item.label.capitalized)
-                                            .font(.headline)
-                                        if let confidence = item.confidence {
-                                            Text("Confidence: \(Int(confidence * 100))%")
-                                                .foregroundStyle(.secondary)
-                                        }
-                                    }
-                                    if item.id != result.items.last?.id {
-                                        Divider()
-                                    }
-                                }
-                            }
-                        }
-
-                        sectionCard(title: "Dominant Colors") {
-                            if result.colors.isEmpty {
-                                Text("No color data returned.")
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                ForEach(result.colors) { color in
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(color.name.capitalized)
-                                            .font(.headline)
-                                        if let percentage = color.percentage {
-                                            Text("Approx. \(Int(percentage * 100))%")
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        if let hex = color.hex {
-                                            Text("Hex: \(hex)")
-                                                .foregroundStyle(.secondary)
-                                        }
-                                    }
-                                    if color.id != result.colors.last?.id {
-                                        Divider()
-                                    }
-                                }
-                            }
-                        }
-
                         sectionCard(title: "Outfit Inspiration Results") {
                             if outfitResults.isEmpty {
-                                Text("No outfit search results found.")
+                                Text("No results found.")
                                     .foregroundStyle(.secondary)
                             } else {
-                                ForEach(outfitResults) { outfit in
-                                    VStack(alignment: .leading, spacing: 6) {
+                                LazyVGrid(columns: [
+                                    GridItem(.flexible()),
+                                    GridItem(.flexible())
+                                ], spacing: 12) {
 
-                                        if let thumbnail = outfit.thumbnail,
-                                           let url = URL(string: thumbnail) {
-                                            AsyncImage(url: url) { image in
-                                                image
-                                                    .resizable()
-                                                    .scaledToFill()
-                                            } placeholder: {
-                                                ProgressView()
+                                    ForEach(outfitResults) { outfit in
+                                        VStack(alignment: .leading, spacing: 6) {
+
+                                            if let thumbnail = outfit.thumbnail,
+                                               let url = URL(string: thumbnail) {
+                                                AsyncImage(url: url) { image in
+                                                    image
+                                                        .resizable()
+                                                        .scaledToFill()
+                                                } placeholder: {
+                                                    ZStack {
+                                                        RoundedRectangle(cornerRadius: 12)
+                                                            .fill(Color.gray.opacity(0.2))
+                                                        ProgressView()
+                                                    }
+                                                }
+                                                .frame(height: 140)
+                                                .clipped()
+                                                .clipShape(RoundedRectangle(cornerRadius: 12))
                                             }
-                                            .frame(height: 150)
-                                            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                                            Text(outfit.title)
+                                                .font(.caption)
+                                                .lineLimit(2)
                                         }
-
-                                        Text(outfit.title)
-                                            .font(.headline)
-
-                                        if let snippet = outfit.snippet, !snippet.isEmpty {
-                                            Text(snippet)
-                                                .foregroundStyle(.secondary)
+                                        .onTapGesture {
+                                            if let url = URL(string: outfit.link) {
+                                                UIApplication.shared.open(url)
+                                            }
                                         }
-
-                                        if let url = URL(string: outfit.link) {
-                                            Link("Open Result", destination: url)
-                                                .font(.subheadline)
-                                        }
-                                    }
-
-                                    if outfit.id != outfitResults.last?.id {
-                                        Divider()
                                     }
                                 }
                             }
                         }
-
                         if !result.notes.isEmpty {
-                            sectionCard(title: "Notes") {
-                                ForEach(result.notes, id: \.self) { note in
-                                    Text("• \(note)")
-                                }
-                            }
-                        }
-
-                        sectionCard(title: "Raw JSON (for debugging)") {
-                            Text(result.rawJSON)
-                                .font(.system(.footnote, design: .monospaced))
-                                .textSelection(.enabled)
+                            
                         }
                     } else {
-                        Text("No results yet.")
+                        Text("No results to display.")
                             .foregroundStyle(.secondary)
                     }
                 }
